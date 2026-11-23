@@ -1,0 +1,7 @@
+/target
+web/node_modules
+web/.next
+.env
+.env.local
+*.wasm
+!fixtures/*.wasm
