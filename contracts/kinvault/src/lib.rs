@@ -3,6 +3,9 @@
 pub mod errors;
 pub mod types;
 
+#[cfg(test)]
+mod test;
+
 use errors::VaultError;
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String};
 use types::{DataKey, MemberAllowance, VaultConfig};
