@@ -120,3 +120,33 @@ fn test_bonus_release_stacks_with_period_cap() {
     assert_eq!(token.balance(&kid), 70_0000000);
     assert_eq!(client.remaining_allowance(&kid), 5_0000000);
 }
+
+#[test]
+fn test_member_listing_and_admin_sweep_recovery() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+    let (client, admin, _token_id, token, token_admin) = setup_vault(&env);
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+
+    token_admin.mint(&admin, &400_0000000);
+    client.fund(&admin, &400_0000000);
+    client.set_member(&m1, &String::from_str(&env, "Books"), &50_0000000, &86400);
+    client.set_member(&m2, &String::from_str(&env, "Food"), &80_0000000, &86400);
+
+    let members = client.list_members();
+    assert_eq!(members.len(), 2);
+
+    // Admin reclaims 150 USDC
+    let remaining = client.admin_withdraw(&150_0000000);
+    assert_eq!(remaining, 250_0000000);
+    assert_eq!(token.balance(&admin), 150_0000000);
+
+    // Sweeping more than balance fails
+    assert_eq!(
+        client.try_admin_withdraw(&300_0000000),
+        Err(Ok(VaultError::InsufficientVaultBalance))
+    );
+}
