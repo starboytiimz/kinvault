@@ -5,6 +5,7 @@ use soroban_sdk::{contracttype, Address, String};
 pub enum DataKey {
     Config,
     Member(Address),
+    MemberList,
 }
 
 #[contracttype]
