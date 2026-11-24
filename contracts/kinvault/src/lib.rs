@@ -7,10 +7,12 @@ pub mod types;
 mod test;
 
 use errors::VaultError;
-use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
 use types::{DataKey, MemberAllowance, VaultConfig};
 
 const MIN_PERIOD_SECONDS: u64 = 3600; // 1 hour minimum rolling window
+const TTL_THRESHOLD: u32 = 50_000;
+const TTL_EXTEND_TO: u32 = 200_000;
 
 #[contract]
 pub struct KinVaultContract;
@@ -109,6 +111,23 @@ impl KinVaultContract {
         env.storage()
             .persistent()
             .set(&DataKey::Member(member.clone()), &allowance);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Member(member.clone()), TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        let mut list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::MemberList)
+            .unwrap_or_else(|| Vec::new(&env));
+        if !list.contains(&member) {
+            list.push_back(member.clone());
+            env.storage().instance().set(&DataKey::MemberList, &list);
+        }
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
         env.events()
             .publish((symbol_short!("member"), member), cap_per_period);
         Ok(())
@@ -296,6 +315,40 @@ impl KinVaultContract {
         env.events().publish((symbol_short!("withdraw"), member), amount);
 
         Ok(total_avail - amount)
+    }
+
+    /// Return all registered member addresses in this vault.
+    pub fn list_members(env: Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::MemberList)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Allow the vault admin to reclaim unspent funds back to their own address.
+    pub fn admin_withdraw(env: Env, amount: i128) -> Result<i128, VaultError> {
+        if amount <= 0 {
+            return Err(VaultError::InvalidAmount);
+        }
+        let cfg: VaultConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::Config)
+            .ok_or(VaultError::NotInitialized)?;
+        cfg.admin.require_auth();
+
+        let client = token::Client::new(&env, &cfg.token);
+        let bal = client.balance(&env.current_contract_address());
+        if amount > bal {
+            return Err(VaultError::InsufficientVaultBalance);
+        }
+        client.transfer(&env.current_contract_address(), &cfg.admin, &amount);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.events()
+            .publish((symbol_short!("a_wdraw"), cfg.admin), amount);
+        Ok(bal - amount)
     }
 }
 
