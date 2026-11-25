@@ -150,3 +150,25 @@ fn test_member_listing_and_admin_sweep_recovery() {
         Err(Ok(VaultError::InsufficientVaultBalance))
     );
 }
+
+#[test]
+fn test_admin_transfer_and_vault_summary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+    let (client, admin, _token_id, _token, token_admin) = setup_vault(&env);
+    let new_admin = Address::generate(&env);
+    let member = Address::generate(&env);
+
+    token_admin.mint(&admin, &250_0000000);
+    client.fund(&admin, &250_0000000);
+    client.set_member(&member, &String::from_str(&env, "Transit"), &40_0000000, &86400);
+
+    client.transfer_admin(&new_admin);
+    let summary = client.get_summary();
+    assert_eq!(summary.admin, new_admin);
+    assert_eq!(summary.current_balance, 250_0000000);
+    assert_eq!(summary.member_count, 1);
+    assert!(!summary.frozen);
+}
