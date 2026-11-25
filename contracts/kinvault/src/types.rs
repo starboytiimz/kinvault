@@ -30,3 +30,15 @@ pub struct MemberAllowance {
     pub bonus_balance: i128,
     pub paused: bool,
 }
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VaultSummary {
+    pub admin: Address,
+    pub token: Address,
+    pub frozen: bool,
+    pub current_balance: i128,
+    pub total_deposited: i128,
+    pub total_withdrawn: i128,
+    pub member_count: u32,
+}
