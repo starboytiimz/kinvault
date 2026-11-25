@@ -8,7 +8,7 @@ mod test;
 
 use errors::VaultError;
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, String, Vec};
-use types::{DataKey, MemberAllowance, VaultConfig};
+use types::{DataKey, MemberAllowance, VaultConfig, VaultSummary};
 
 const MIN_PERIOD_SECONDS: u64 = 3600; // 1 hour minimum rolling window
 const TTL_THRESHOLD: u32 = 50_000;
@@ -349,6 +349,48 @@ impl KinVaultContract {
         env.events()
             .publish((symbol_short!("a_wdraw"), cfg.admin), amount);
         Ok(bal - amount)
+    }
+
+    /// Transfer vault administration to a new household manager address.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), VaultError> {
+        let mut cfg: VaultConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::Config)
+            .ok_or(VaultError::NotInitialized)?;
+        cfg.admin.require_auth();
+        cfg.admin = new_admin.clone();
+        env.storage().instance().set(&DataKey::Config, &cfg);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.events().publish((symbol_short!("t_admin"),), new_admin);
+        Ok(())
+    }
+
+    /// Return an aggregated vault summary combining config, live balance, and member count.
+    pub fn get_summary(env: Env) -> Result<VaultSummary, VaultError> {
+        let cfg: VaultConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::Config)
+            .ok_or(VaultError::NotInitialized)?;
+        let client = token::Client::new(&env, &cfg.token);
+        let current_balance = client.balance(&env.current_contract_address());
+        let list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::MemberList)
+            .unwrap_or_else(|| Vec::new(&env));
+        Ok(VaultSummary {
+            admin: cfg.admin,
+            token: cfg.token,
+            frozen: cfg.frozen,
+            current_balance,
+            total_deposited: cfg.total_deposited,
+            total_withdrawn: cfg.total_withdrawn,
+            member_count: list.len(),
+        })
     }
 }
 
